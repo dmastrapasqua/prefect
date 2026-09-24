@@ -8,6 +8,7 @@ import orjson
 import pydantic
 
 from ._datetime import DateTime, Date, Interval, PositiveInterval
+from .geo import FeatureCollection
 from .names import (
     Name,
     NameOrEmpty,

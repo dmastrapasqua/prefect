@@ -24,6 +24,7 @@ const meta = {
 	component: CreateFlowRunForm,
 	args: {
 		deployment: createFakeDeployment({ work_pool_name: "my-work-pool" }),
+		overrideParameters: undefined,
 	},
 	parameters: {
 		msw: {
@@ -49,4 +50,47 @@ export default meta;
 
 export const Story: StoryObj = {
 	name: "CreateFlowRunForm",
+};
+
+export const WithBBoxParameter: StoryObj<typeof meta> = {
+	args: {
+		overrideParameters: undefined,
+		deployment: createFakeDeployment({
+			work_pool_name: "my-work-pool",
+			parameters: {
+				aoi: {
+					west: -74.25909,
+					south: 40.477399,
+					east: -73.700272,
+					north: 40.917577,
+				},
+			},
+			parameter_openapi_schema: {
+				title: "Parameters",
+				type: "object",
+				properties: {
+					aoi: {
+						$ref: "#/definitions/BBox",
+						title: "Area of Interest",
+					},
+				},
+				required: ["aoi"],
+				definitions: {
+					BBox: {
+						title: "BBox",
+						type: "object",
+						"x-prefect-ui-widget": "bbox",
+						properties: {
+							west: { type: "number", title: "West" },
+							south: { type: "number", title: "South" },
+							east: { type: "number", title: "East" },
+							north: { type: "number", title: "North" },
+						},
+						required: ["west", "south", "east", "north"],
+					},
+				},
+			},
+			enforce_parameter_schema: true,
+		}),
+	},
 };

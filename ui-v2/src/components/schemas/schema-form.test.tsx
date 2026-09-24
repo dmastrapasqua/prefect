@@ -454,4 +454,33 @@ describe("property.type", () => {
 			expect(spy).toHaveBeenLastCalledWith({ format_rule: null });
 		});
 	});
+
+	describe("feature collection widget", () => {
+		test("renders for resolved feature collection references", () => {
+			const schema: PrefectSchemaObject = {
+				type: "object",
+				properties: {
+					aoi: {
+						$ref: "#/definitions/FeatureCollection",
+					},
+				},
+				definitions: {
+					FeatureCollection: {
+						type: "object",
+						"x-prefect-ui-widget": "feature-collection",
+						properties: {
+							type: { type: "string" },
+							features: { type: "array" },
+						},
+					},
+				},
+			};
+
+			render(<TestSchemaForm schema={schema} />);
+
+			expect(
+				screen.getByRole("application", { name: "Bounding box map" }),
+			).toBeVisible();
+		});
+	});
 });

@@ -536,6 +536,37 @@ export const TypeObjectWithPosition: Story = {
 };
 TypeObjectWithPosition.storyName = "type:object & position";
 
+export const TypeObjectWithBBoxWidget: Story = {
+	args: {
+		schema: {
+			type: "object",
+			properties: {
+				aoi: {
+					title: "Area of Interest",
+					type: "object",
+					"x-prefect-ui-widget": "bbox",
+					properties: {
+						west: { type: "number", title: "West" },
+						south: { type: "number", title: "South" },
+						east: { type: "number", title: "East" },
+						north: { type: "number", title: "North" },
+					},
+					required: ["west", "south", "east", "north"],
+				},
+			},
+		},
+		values: {
+			aoi: {
+				west: -74.25909,
+				south: 40.477399,
+				east: -73.700272,
+				north: 40.917577,
+			},
+		},
+	},
+};
+TypeObjectWithBBoxWidget.storyName = "type:object & bbox widget";
+
 export const TypeUnknown: Story = {
 	args: {
 		schema: {

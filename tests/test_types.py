@@ -3,13 +3,15 @@ from __future__ import annotations
 import datetime
 import sys
 import types
+import copy
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
-from prefect.types import KeyValueLabelsField, SecondsTimeDelta
+from prefect.types import FeatureCollection, KeyValueLabelsField, SecondsTimeDelta
 from prefect.types import _datetime as datetime_types
 from prefect.types._datetime import human_friendly_diff
+from prefect.utilities.callables import parameter_schema
 
 
 def test_allow_none_as_empty_dict():
@@ -64,6 +66,46 @@ def test_seconds_timedelta_accepts_numeric_values():
     assert Model(duration=5).duration == datetime.timedelta(seconds=5)
     assert Model(duration="10").duration == datetime.timedelta(seconds=10)
     assert Model(duration="PT5S").duration == datetime.timedelta(seconds=5)
+
+
+SQUARE = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[-10, -5], [10, -5], [10, 5], [-10, 5], [-10, -5]]],
+            },
+        }
+    ],
+}
+
+
+def test_feature_collection_validates_polygons():
+    assert FeatureCollection.model_validate(SQUARE).bounds() == (-10, -5, 10, 5)
+
+    open_ring = copy.deepcopy(SQUARE)
+    open_ring["features"][0]["geometry"]["coordinates"][0].pop()
+    with pytest.raises(ValidationError, match="must be closed"):
+        FeatureCollection.model_validate(open_ring)
+
+    with pytest.raises(ValidationError):
+        FeatureCollection.model_validate({"type": "FeatureCollection", "features": []})
+
+
+def test_feature_collection_parameter_schema_includes_ui_widget_marker():
+    def flow(aoi: FeatureCollection):
+        pass
+
+    schema = parameter_schema(flow).model_dump_for_openapi()
+
+    assert schema["properties"]["aoi"]["$ref"] == "#/definitions/FeatureCollection"
+    assert (
+        schema["definitions"]["FeatureCollection"]["x-prefect-ui-widget"]
+        == "feature-collection"
+    )
 
 
 def test_now_uses_to_stdlib_on_python_313_plus(monkeypatch: pytest.MonkeyPatch):
