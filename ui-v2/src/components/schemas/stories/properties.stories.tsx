@@ -536,36 +536,88 @@ export const TypeObjectWithPosition: Story = {
 };
 TypeObjectWithPosition.storyName = "type:object & position";
 
-export const TypeObjectWithBBoxWidget: Story = {
+export const TypeObjectWithFeatureCollectionWidget: Story = {
 	args: {
 		schema: {
+			definitions: {
+				FeatureCollection: {
+					title: "FeatureCollection",
+					type: "object",
+					"x-prefect-ui-widget": "feature-collection",
+					properties: {
+						type: { type: "string" },
+						features: { type: "array" },
+					},
+				},
+			},
 			type: "object",
 			properties: {
 				aoi: {
 					title: "Area of Interest",
-					type: "object",
-					"x-prefect-ui-widget": "bbox",
-					properties: {
-						west: { type: "number", title: "West" },
-						south: { type: "number", title: "South" },
-						east: { type: "number", title: "East" },
-						north: { type: "number", title: "North" },
-					},
-					required: ["west", "south", "east", "north"],
+					$ref: "#/definitions/FeatureCollection",
 				},
 			},
 		},
 		values: {
 			aoi: {
-				west: -74.25909,
-				south: 40.477399,
-				east: -73.700272,
-				north: 40.917577,
+				type: "FeatureCollection",
+				features: [
+					{
+						type: "Feature",
+						properties: { mode: "rectangle" },
+						geometry: {
+							type: "Polygon",
+							coordinates: [
+								[
+									[-74.02, 40.7],
+									[-73.97, 40.7],
+									[-73.97, 40.74],
+									[-74.02, 40.74],
+									[-74.02, 40.7],
+								],
+							],
+						},
+					},
+					{
+						type: "Feature",
+						properties: { mode: "polygon" },
+						geometry: {
+							type: "Polygon",
+							coordinates: [
+								[
+									[-73.981, 40.768],
+									[-73.958, 40.8],
+									[-73.949, 40.797],
+									[-73.973, 40.764],
+									[-73.981, 40.768],
+								],
+							],
+						},
+					},
+					{
+						type: "Feature",
+						properties: { mode: "linestring" },
+						geometry: {
+							type: "LineString",
+							coordinates: [
+								[-74.0, 40.75],
+								[-73.99, 40.76],
+								[-73.98, 40.77],
+							],
+						},
+					},
+					{
+						type: "Feature",
+						properties: { mode: "point" },
+						geometry: { type: "Point", coordinates: [-73.9855, 40.758] },
+					},
+				],
 			},
 		},
 	},
 };
-TypeObjectWithBBoxWidget.storyName = "type:object & bbox widget";
+TypeObjectWithFeatureCollectionWidget.storyName =
+	"type:object & feature collection widget";
 
 export const TypeUnknown: Story = {
 	args: {

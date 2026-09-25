@@ -52,17 +52,65 @@ export const Story: StoryObj = {
 	name: "CreateFlowRunForm",
 };
 
-export const WithBBoxParameter: StoryObj<typeof meta> = {
+export const WithFeatureCollectionParameter: StoryObj<typeof meta> = {
 	args: {
 		overrideParameters: undefined,
 		deployment: createFakeDeployment({
 			work_pool_name: "my-work-pool",
 			parameters: {
 				aoi: {
-					west: -74.25909,
-					south: 40.477399,
-					east: -73.700272,
-					north: 40.917577,
+					type: "FeatureCollection",
+					features: [
+						{
+							type: "Feature",
+							properties: { mode: "rectangle" },
+							geometry: {
+								type: "Polygon",
+								coordinates: [
+									[
+										[-74.02, 40.7],
+										[-73.97, 40.7],
+										[-73.97, 40.74],
+										[-74.02, 40.74],
+										[-74.02, 40.7],
+									],
+								],
+							},
+						},
+						{
+							type: "Feature",
+							properties: { mode: "polygon" },
+							geometry: {
+								type: "Polygon",
+								coordinates: [
+									[
+										[-73.981, 40.768],
+										[-73.958, 40.8],
+										[-73.949, 40.797],
+										[-73.973, 40.764],
+										[-73.981, 40.768],
+									],
+								],
+							},
+						},
+						{
+							type: "Feature",
+							properties: { mode: "linestring" },
+							geometry: {
+								type: "LineString",
+								coordinates: [
+									[-74.0, 40.75],
+									[-73.99, 40.76],
+									[-73.98, 40.77],
+								],
+							},
+						},
+						{
+							type: "Feature",
+							properties: { mode: "point" },
+							geometry: { type: "Point", coordinates: [-73.9855, 40.758] },
+						},
+					],
 				},
 			},
 			parameter_openapi_schema: {
@@ -70,23 +118,21 @@ export const WithBBoxParameter: StoryObj<typeof meta> = {
 				type: "object",
 				properties: {
 					aoi: {
-						$ref: "#/definitions/BBox",
+						$ref: "#/definitions/FeatureCollection",
 						title: "Area of Interest",
 					},
 				},
 				required: ["aoi"],
 				definitions: {
-					BBox: {
-						title: "BBox",
+					FeatureCollection: {
+						title: "FeatureCollection",
 						type: "object",
-						"x-prefect-ui-widget": "bbox",
+						"x-prefect-ui-widget": "feature-collection",
 						properties: {
-							west: { type: "number", title: "West" },
-							south: { type: "number", title: "South" },
-							east: { type: "number", title: "East" },
-							north: { type: "number", title: "North" },
+							type: { type: "string" },
+							features: { type: "array" },
 						},
-						required: ["west", "south", "east", "north"],
+						required: ["features"],
 					},
 				},
 			},

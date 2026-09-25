@@ -67,30 +67,70 @@ def test_seconds_timedelta_accepts_numeric_values():
     assert Model(duration="10").duration == datetime.timedelta(seconds=10)
     assert Model(duration="PT5S").duration == datetime.timedelta(seconds=5)
 
-
-SQUARE = {
+# FeatureCollection with a polygon, a point and a line
+MIXED = {
     "type": "FeatureCollection",
     "features": [
         {
             "type": "Feature",
-            "properties": {},
+            "id": "rectangle-feature",
+            "properties": {"mode": "rectangle"},
             "geometry": {
                 "type": "Polygon",
                 "coordinates": [[[-10, -5], [10, -5], [10, 5], [-10, 5], [-10, -5]]],
             },
-        }
+        },
+        {
+            "type": "Feature",
+            "id": "point-feature",
+            "properties": {"mode": "point"},
+            "geometry": {"type": "Point", "coordinates": [20, 30]},
+        },
+        {
+            "type": "Feature",
+            "id": "line-feature",
+            "properties": {"mode": "linestring"},
+            "geometry": {"type": "LineString", "coordinates": [[0, 0], [-30, -40]]},
+        },
     ],
 }
 
 
-def test_feature_collection_validates_polygons():
-    assert FeatureCollection.model_validate(SQUARE).bounds() == (-10, -5, 10, 5)
+def test_feature_collection_accepts_points_lines_and_polygons():
+    collection = FeatureCollection.model_validate(MIXED)
 
-    open_ring = copy.deepcopy(SQUARE)
-    open_ring["features"][0]["geometry"]["coordinates"][0].pop()
-    with pytest.raises(ValidationError, match="must be closed"):
-        FeatureCollection.model_validate(open_ring)
+    assert [f.geometry.type for f in collection.features] == [
+        "Polygon",
+        "Point",
+        "LineString",
+    ]
+    assert collection.features[0].id == "rectangle-feature"
+    assert collection.features[1].id == "point-feature"
+    assert collection.features[2].id == "line-feature"
+    assert collection.bounds() == (-30, -40, 20, 30)
 
+
+@pytest.mark.parametrize(
+    "geometry, message",
+    [
+        (
+            {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1]]]},
+            "must be closed",
+        ),
+        ({"type": "LineString", "coordinates": [[0, 0]]}, "at least 2"),
+        ({"type": "Point", "coordinates": [200, 0]}, "less than or equal to 180"),
+        ({"type": "MultiPoint", "coordinates": [[0, 0]]}, "does not match any"),
+    ],
+)
+def test_feature_collection_rejects_invalid_geometries(geometry, message):
+    invalid = copy.deepcopy(MIXED)
+    invalid["features"][0]["geometry"] = geometry
+
+    with pytest.raises(ValidationError, match=message):
+        FeatureCollection.model_validate(invalid)
+
+
+def test_feature_collection_requires_at_least_one_feature():
     with pytest.raises(ValidationError):
         FeatureCollection.model_validate({"type": "FeatureCollection", "features": []})
 

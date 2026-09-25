@@ -1,25 +1,89 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
-import { SchemaFormInputFeatureCollection } from "./schema-form-input-feature-collection.tsx";
-import {
-	bboxToFeatureCollection,
-	featureCollectionToBBox,
-	isFeatureCollection,
-} from "./utilities/geojson";
+import { describe, expect, test, vi } from "vitest";
+import { SchemaFormInputFeatureCollection } from "./schema-form-input-feature-collection";
+import type { FeatureCollection } from "./utilities/geojson";
 
-const VALUE = bboxToFeatureCollection({
-	west: -10,
-	south: -20,
-	east: 30,
-	north: 40,
-});
+// MapLibre needs WebGL, which jsdom doesn't have.
+// The mock stands in for the map: it shows how many features it received and can "draw" a point.
+vi.mock("./feature-collection-map", () => ({
+	FeatureCollectionMap: ({
+		value,
+		onValueChange,
+	}: {
+		value?: { features: unknown[] };
+		onValueChange: (value: unknown) => void;
+	}) => (
+		<div role="application" aria-label="Feature collection map">
+			<span data-testid="map-feature-count">{value?.features.length ?? 0}</span>
+			<button
+				type="button"
+				onClick={() =>
+					onValueChange({
+						type: "FeatureCollection",
+						features: [
+							...(value?.features ?? []),
+							{
+								type: "Feature",
+								properties: { mode: "point" },
+								geometry: { type: "Point", coordinates: [12.5, 41.9] },
+							},
+						],
+					})
+				}
+			>
+				mock draw point
+			</button>
+		</div>
+	),
+}));
 
-beforeEach(() => {
-	HTMLElement.prototype.setPointerCapture = vi.fn();
-});
+const RECTANGLE = {
+	type: "Feature",
+	properties: { mode: "rectangle" },
+	geometry: {
+		type: "Polygon",
+		coordinates: [
+			[
+				[-10, -20],
+				[30, -20],
+				[30, 40],
+				[-10, 40],
+				[-10, -20],
+			],
+		],
+	},
+} as const;
+
+const LINE = {
+	type: "Feature",
+	properties: { mode: "linestring" },
+	geometry: {
+		type: "LineString",
+		coordinates: [
+			[0, 0],
+			[5, 5],
+		],
+	},
+} as const;
+
+const POINT_WITHOUT_MODE = {
+	type: "Feature",
+	properties: null,
+	geometry: { type: "Point", coordinates: [1, 2] },
+} as const;
+
+const VALUE = {
+	type: "FeatureCollection",
+	features: [RECTANGLE, LINE, POINT_WITHOUT_MODE],
+} as unknown as FeatureCollection;
+
+function openJsonTab() {
+	// Radix tabs switch on mouse down
+	fireEvent.mouseDown(screen.getByRole("tab", { name: "JSON" }));
+}
 
 describe("SchemaFormInputFeatureCollection", () => {
-	test("renders numeric bbox inputs from the current value", () => {
+	test("passes the value to the map and lists its features", () => {
 		render(
 			<SchemaFormInputFeatureCollection
 				id="aoi"
@@ -28,13 +92,27 @@ describe("SchemaFormInputFeatureCollection", () => {
 			/>,
 		);
 
-		expect(screen.getByLabelText("West longitude")).toHaveValue(-10);
-		expect(screen.getByLabelText("South latitude")).toHaveValue(-20);
-		expect(screen.getByLabelText("East longitude")).toHaveValue(30);
-		expect(screen.getByLabelText("North latitude")).toHaveValue(40);
+		expect(screen.getByTestId("map-feature-count")).toHaveTextContent("3");
+		expect(screen.getByRole("tab", { name: "Features (3)" })).toBeVisible();
+		expect(
+			screen.getAllByRole("listitem").map((item) => item.textContent),
+		).toEqual(["Rectangle 1", "Line 2", "Point 3"]);
 	});
 
-	test("updates a single coordinate from the numeric inputs", () => {
+	test("shows an empty state when there is no value", () => {
+		render(
+			<SchemaFormInputFeatureCollection
+				id="aoi"
+				value={undefined}
+				onValueChange={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByText(/Nothing drawn yet/)).toBeVisible();
+		expect(screen.getByTestId("map-feature-count")).toHaveTextContent("0");
+	});
+
+	test("adds features drawn on the map", () => {
 		const onValueChange = vi.fn();
 
 		render(
@@ -45,16 +123,92 @@ describe("SchemaFormInputFeatureCollection", () => {
 			/>,
 		);
 
-		fireEvent.change(screen.getByLabelText("East longitude"), {
-			target: { value: "42.5" },
+		fireEvent.click(screen.getByRole("button", { name: "mock draw point" }));
+
+		const next = onValueChange.mock.calls.at(-1)?.[0] as FeatureCollection;
+		expect(next.features).toHaveLength(4);
+		expect(next.features[3].geometry).toEqual({
+			type: "Point",
+			coordinates: [12.5, 41.9],
+		});
+	});
+
+	test("deletes a feature from the list", () => {
+		const onValueChange = vi.fn();
+
+		render(
+			<SchemaFormInputFeatureCollection
+				id="aoi"
+				value={VALUE}
+				onValueChange={onValueChange}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "Delete Line 2" }));
+
+		expect(onValueChange).toHaveBeenLastCalledWith({
+			type: "FeatureCollection",
+			features: [RECTANGLE, POINT_WITHOUT_MODE],
+		});
+	});
+
+	test("deleting the last feature clears the value", () => {
+		const onValueChange = vi.fn();
+
+		render(
+			<SchemaFormInputFeatureCollection
+				id="aoi"
+				value={{ type: "FeatureCollection", features: [LINE] }}
+				onValueChange={onValueChange}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "Delete Line 1" }));
+
+		expect(onValueChange).toHaveBeenLastCalledWith(undefined);
+	});
+
+	test("shows the value as JSON", () => {
+		render(
+			<SchemaFormInputFeatureCollection
+				id="aoi"
+				value={VALUE}
+				onValueChange={vi.fn()}
+			/>,
+		);
+
+		openJsonTab();
+
+		const textarea = screen.getByLabelText("GeoJSON") as HTMLTextAreaElement;
+		expect(JSON.parse(textarea.value)).toEqual(VALUE);
+	});
+
+	test("applies valid JSON typed in the editor", () => {
+		const onValueChange = vi.fn();
+
+		render(
+			<SchemaFormInputFeatureCollection
+				id="aoi"
+				value={undefined}
+				onValueChange={onValueChange}
+			/>,
+		);
+
+		openJsonTab();
+		fireEvent.change(screen.getByLabelText("GeoJSON"), {
+			target: {
+				value: JSON.stringify({ type: "FeatureCollection", features: [LINE] }),
+			},
 		});
 
-		expect(onValueChange).toHaveBeenCalledWith(
-			bboxToFeatureCollection({ west: -10, south: -20, east: 42.5, north: 40 }),
-		);
+		expect(onValueChange).toHaveBeenLastCalledWith({
+			type: "FeatureCollection",
+			features: [LINE],
+		});
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 	});
 
-	test("clears the value while a coordinate is incomplete", () => {
+	test("reports invalid JSON without changing the value", () => {
 		const onValueChange = vi.fn();
 
 		render(
@@ -65,75 +219,40 @@ describe("SchemaFormInputFeatureCollection", () => {
 			/>,
 		);
 
-		fireEvent.change(screen.getByLabelText("East longitude"), {
+		openJsonTab();
+		const textarea = screen.getByLabelText("GeoJSON");
+
+		fireEvent.change(textarea, { target: { value: "{ not json" } });
+		expect(screen.getByRole("alert")).toHaveTextContent("Invalid JSON");
+
+		fireEvent.change(textarea, {
+			target: { value: JSON.stringify({ type: "Feature" }) },
+		});
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"Expected a FeatureCollection",
+		);
+
+		expect(onValueChange).not.toHaveBeenCalled();
+		// the half-typed text stays in the editor
+		expect(textarea).toHaveValue(JSON.stringify({ type: "Feature" }));
+	});
+
+	test("clearing the JSON clears the value", () => {
+		const onValueChange = vi.fn();
+
+		render(
+			<SchemaFormInputFeatureCollection
+				id="aoi"
+				value={VALUE}
+				onValueChange={onValueChange}
+			/>,
+		);
+
+		openJsonTab();
+		fireEvent.change(screen.getByLabelText("GeoJSON"), {
 			target: { value: "" },
 		});
 
 		expect(onValueChange).toHaveBeenLastCalledWith(undefined);
-		expect(screen.getByLabelText("East longitude")).toHaveValue(null);
-	});
-
-	test("sets a default area when there is no value", () => {
-		const onValueChange = vi.fn();
-
-		render(
-			<SchemaFormInputFeatureCollection
-				id="aoi"
-				value={undefined}
-				onValueChange={onValueChange}
-			/>,
-		);
-
-		fireEvent.click(screen.getByRole("button", { name: "Set default area" }));
-
-		expect(onValueChange).toHaveBeenCalledWith(
-			bboxToFeatureCollection({ west: -10, south: -10, east: 10, north: 10 }),
-		);
-	});
-
-	test("clears the selected area", () => {
-		const onValueChange = vi.fn();
-
-		render(
-			<SchemaFormInputFeatureCollection
-				id="aoi"
-				value={VALUE}
-				onValueChange={onValueChange}
-			/>,
-		);
-
-		fireEvent.click(
-			screen.getByRole("button", { name: "Clear selected area" }),
-		);
-
-		expect(onValueChange).toHaveBeenLastCalledWith(undefined);
-	});
-
-	test("selects a bbox by dragging on the map", () => {
-		const onValueChange = vi.fn();
-
-		render(
-			<SchemaFormInputFeatureCollection
-				id="aoi"
-				value={undefined}
-				onValueChange={onValueChange}
-			/>,
-		);
-
-		const map = screen.getByRole("application", { name: "Bounding box map" });
-		fireEvent.pointerDown(map, { pointerId: 1, clientX: 100, clientY: 100 });
-		fireEvent.pointerMove(map, { pointerId: 1, clientX: 250, clientY: 180 });
-		fireEvent.pointerUp(map, { pointerId: 1, clientX: 250, clientY: 180 });
-
-		const selected: unknown = onValueChange.mock.calls.at(-1)?.[0];
-		expect(isFeatureCollection(selected)).toBe(true);
-
-		const bbox = isFeatureCollection(selected)
-			? featureCollectionToBBox(selected)
-			: undefined;
-
-		expect(bbox).toBeDefined();
-		expect(bbox?.west).toBeLessThan(bbox?.east ?? 0);
-		expect(bbox?.south).toBeLessThan(bbox?.north ?? 0);
 	});
 });
