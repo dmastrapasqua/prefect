@@ -27,6 +27,7 @@ import {
 	type FeatureCollection,
 	featureCollectionToBBox,
 	type Geometry,
+	type Position,
 	isDrawMode,
 	isGeometry,
 	toFeatureCollection,
@@ -66,7 +67,9 @@ const TOOLS: { tool: Tool; label: string; icon: IconId; hint: string }[] = [
 		tool: "select",
 		label: "Select and edit",
 		icon: "MousePointer2",
-		hint: "Click a shape to select it, then drag the shape or its points. Press Delete to remove the selected shape.",
+		hint: "Click a shape to select it, then drag the shape to move it or its points to resize it.\n" +
+			"On polygons and lines, click a small midpoint to add a corner, or right-click a corner to delete it.\n" +
+			"Press Delete to remove the selected shape.",
 	},
 	{
 		tool: "point",
@@ -120,7 +123,9 @@ function createModes() {
 				rectangle: {
 					feature: { draggable: true, coordinates: { resizable: "opposite" } },
 				},
-				circle: { feature: { draggable: true } },
+				circle: {
+					feature: { draggable: true, coordinates: { draggable: true, resizable: "center-fixed" } },
+				},
 			},
 		}),
 		new TerraDrawPointMode(),
@@ -234,6 +239,39 @@ function loadFeatures(draw: TerraDraw, features: Feature[]) {
 // They don't belong in the flow parameter.
 const INTERNAL_PROPERTIES = ["selected", "currentlyDrawing", "edited"];
 
+const EARTH_RADIUS_KM = 6371.0088;
+
+// Great-circle distance between two [lon, lat] positions.
+function distanceKm([lon1, lat1]: Position, [lon2, lat2]: Position): number {
+	const toRad = (deg: number) => (deg * Math.PI) / 180;
+	const dLat = toRad(lat2 - lat1);
+	const dLon = toRad(lon2 - lon1);
+	const a =
+		Math.sin(dLat / 2) ** 2 +
+		Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+	return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(a));
+}
+
+// Terra Draw sets radiusKilometers when a circle is drawn but doesn't update it when the circle is resized.
+// Recompute it from the geometry: the average distance from the center to the points on the edge.
+function circleRadiusKm(geometry: Geometry): number | undefined {
+	if (geometry.type !== "Polygon") {
+		return undefined;
+	}
+	const edge = geometry.coordinates[0].slice(0, -1); // drop the closing point
+	if (edge.length === 0) {
+		return undefined;
+	}
+	const center: Position = [
+		edge.reduce((sum, [lon]) => sum + lon, 0) / edge.length,
+		edge.reduce((sum, [, lat]) => sum + lat, 0) / edge.length,
+	];
+	const meanKm =
+		edge.reduce((sum, position) => sum + distanceKm(center, position), 0) /
+		edge.length;
+	return Math.round(meanKm * 1000) / 1000; // metre precision
+}
+
 function snapshotToFeatureCollection(
 	snapshot: GeoJSONStoreFeatures[],
 ): FeatureCollection | undefined {
@@ -250,10 +288,15 @@ function snapshotToFeatureCollection(
 			for (const key of INTERNAL_PROPERTIES) {
 				delete properties[key];
 			}
+			const geometry = feature.geometry as Geometry;
+			if (properties.mode === "circle") {
+				properties.radiusKilometers =
+					circleRadiusKm(geometry) ?? properties.radiusKilometers;
+			}
 			return {
 				type: "Feature",
 				id: feature.id,
-				geometry: feature.geometry as Geometry,
+				geometry,
 				properties,
 			};
 		});
@@ -478,7 +521,7 @@ export function FeatureCollectionMap({
 				role="application"
 				aria-label="Feature collection map"
 			/>
-			<p className="text-xs text-muted-foreground">{hint}</p>
+			<p className="whitespace-pre-line text-xs text-muted-foreground">{hint}</p>
 		</div>
 	);
 }

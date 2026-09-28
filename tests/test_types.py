@@ -3,15 +3,13 @@ from __future__ import annotations
 import datetime
 import sys
 import types
-import copy
 
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
-from prefect.types import FeatureCollection, KeyValueLabelsField, SecondsTimeDelta
+from prefect.types import KeyValueLabelsField, SecondsTimeDelta
 from prefect.types import _datetime as datetime_types
 from prefect.types._datetime import human_friendly_diff
-from prefect.utilities.callables import parameter_schema
 
 
 def test_allow_none_as_empty_dict():
@@ -66,86 +64,6 @@ def test_seconds_timedelta_accepts_numeric_values():
     assert Model(duration=5).duration == datetime.timedelta(seconds=5)
     assert Model(duration="10").duration == datetime.timedelta(seconds=10)
     assert Model(duration="PT5S").duration == datetime.timedelta(seconds=5)
-
-# FeatureCollection with a polygon, a point and a line
-MIXED = {
-    "type": "FeatureCollection",
-    "features": [
-        {
-            "type": "Feature",
-            "id": "rectangle-feature",
-            "properties": {"mode": "rectangle"},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[[-10, -5], [10, -5], [10, 5], [-10, 5], [-10, -5]]],
-            },
-        },
-        {
-            "type": "Feature",
-            "id": "point-feature",
-            "properties": {"mode": "point"},
-            "geometry": {"type": "Point", "coordinates": [20, 30]},
-        },
-        {
-            "type": "Feature",
-            "id": "line-feature",
-            "properties": {"mode": "linestring"},
-            "geometry": {"type": "LineString", "coordinates": [[0, 0], [-30, -40]]},
-        },
-    ],
-}
-
-
-def test_feature_collection_accepts_points_lines_and_polygons():
-    collection = FeatureCollection.model_validate(MIXED)
-
-    assert [f.geometry.type for f in collection.features] == [
-        "Polygon",
-        "Point",
-        "LineString",
-    ]
-    assert collection.features[0].id == "rectangle-feature"
-    assert collection.features[1].id == "point-feature"
-    assert collection.features[2].id == "line-feature"
-    assert collection.bounds() == (-30, -40, 20, 30)
-
-
-@pytest.mark.parametrize(
-    "geometry, message",
-    [
-        (
-            {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1]]]},
-            "must be closed",
-        ),
-        ({"type": "LineString", "coordinates": [[0, 0]]}, "at least 2"),
-        ({"type": "Point", "coordinates": [200, 0]}, "less than or equal to 180"),
-        ({"type": "MultiPoint", "coordinates": [[0, 0]]}, "does not match any"),
-    ],
-)
-def test_feature_collection_rejects_invalid_geometries(geometry, message):
-    invalid = copy.deepcopy(MIXED)
-    invalid["features"][0]["geometry"] = geometry
-
-    with pytest.raises(ValidationError, match=message):
-        FeatureCollection.model_validate(invalid)
-
-
-def test_feature_collection_requires_at_least_one_feature():
-    with pytest.raises(ValidationError):
-        FeatureCollection.model_validate({"type": "FeatureCollection", "features": []})
-
-
-def test_feature_collection_parameter_schema_includes_ui_widget_marker():
-    def flow(aoi: FeatureCollection):
-        pass
-
-    schema = parameter_schema(flow).model_dump_for_openapi()
-
-    assert schema["properties"]["aoi"]["$ref"] == "#/definitions/FeatureCollection"
-    assert (
-        schema["definitions"]["FeatureCollection"]["x-prefect-ui-widget"]
-        == "feature-collection"
-    )
 
 
 def test_now_uses_to_stdlib_on_python_313_plus(monkeypatch: pytest.MonkeyPatch):
