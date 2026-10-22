@@ -42,7 +42,7 @@ export default defineConfig(({ mode }) => {
           format: "es",
        	},
 		build: {
-			sourcemap: true,
+			sourcemap: false,
 			rollupOptions: {
 				output: {
 					manualChunks(id) {
